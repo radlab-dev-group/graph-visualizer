@@ -1,3 +1,3 @@
-| Version | Changelog                                                                                       |
-|---------|-------------------------------------------------------------------------------------------------|
-| 0.0.1   | Project initialization, working version. Loading graphs from specified subdirectories, caching. |
+| Version | Changelog                                                                                                                                                    |
+|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.0.1   | Project initialization, working version. Loading graphs from specified subdirectories, caching. Add spinners for loading graph options and status in the UI. |
