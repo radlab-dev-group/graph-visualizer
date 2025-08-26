@@ -10,7 +10,7 @@ visualization with cached computations for better performance.
 The visualizer is currently available at: https://graph.playground.radlab.dev/
 
 <p align="center">
-  <img src="graph_visualiser/assets/images/explorer-sample.jpeg" alt="explorer-sample.png">
+  <img src="graph_visualiser/assets/images/explorer-sample.png" alt="explorer-sample.png">
 </p>
 
 Feel free to browse the information and discover trends!
