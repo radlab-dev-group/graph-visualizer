@@ -63,12 +63,6 @@ def find_graph_files(collection_path: str, pattern: str) -> List[str]:
     search_pattern = os.path.join(collection_path, "**", pattern)
     files = glob.glob(search_pattern, recursive=True)
 
-    # Sort by file size (smaller first) to favor quicker loads
-    try:
-        files.sort(key=lambda x: os.path.getsize(x))
-    except OSError as e:
-        print(f"Could not sort files by size. Returning unsorted. Error: {e}")
-
     print(
         f"Found {len(files)} files in '{collection_path}' "
         f"matching pattern '{pattern}'."
