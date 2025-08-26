@@ -10,8 +10,9 @@ MAX_CACHE_NODES = 10_000
 
 def get_graph_collections(base_path: str) -> List[str]:
     """
-    Scan the provided base path and return a sorted list
-    of subdirectories (graph collections).
+    Scan the base path and return a sorted list of leaf subdirectories (collections),
+    represented as relative POSIX-like paths (e.g., 'specific/1').
+    A directory that contains subdirectories is not returned itself (only its leaves).
     """
     if not os.path.isdir(base_path):
         print(
@@ -21,12 +22,30 @@ def get_graph_collections(base_path: str) -> List[str]:
         return []
 
     try:
-        # Use os.scandir for performance
-        collections = [
-            entry.name for entry in os.scandir(base_path) if entry.is_dir()
-        ]
-        collections.sort()
-        return collections
+        all_dirs: set[str] = set()
+        parents_with_children: set[str] = set()
+
+        for root, dirs, _ in os.walk(base_path):
+            # Skip hidden dirs
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+
+            # Mark the current root as a parent if it has children
+            rel_root = os.path.relpath(root, base_path)
+            rel_root_posix = rel_root.replace(os.sep, "/")
+            if dirs and rel_root_posix not in (".", ""):
+                parents_with_children.add(rel_root_posix)
+
+            # Collect immediate subdirectories as candidates
+            for d in dirs:
+                full_dir = os.path.join(root, d)
+                rel = os.path.relpath(full_dir, base_path)
+                rel_posix = rel.replace(os.sep, "/")
+                if rel_posix and rel_posix != ".":
+                    all_dirs.add(rel_posix)
+
+        # Leaf directories are those that are not recorded as parents
+        leaves = sorted(d for d in all_dirs if d not in parents_with_children)
+        return leaves
     except OSError as e:
         print(f"Error scanning directory '{base_path}': {e}")
         return []
