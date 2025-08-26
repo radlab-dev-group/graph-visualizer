@@ -22,17 +22,31 @@ def _top_bar() -> html.Div:
                     html.Div(
                         [
                             html.Label("Select Graph:", className="label-bold"),
-                            dcc.Dropdown(
-                                id="graph-selector",
-                                options=[],
-                                value=None,
-                                placeholder="Select a graph to visualize...",
-                                className="dropdown",
-                                disabled=True,
+                            # Spinner while loading the list of graphs (options/value/disabled)
+                            dcc.Loading(
+                                id="graph-selector-loading",
+                                type="dot",
+                                children=[
+                                    dcc.Dropdown(
+                                        id="graph-selector",
+                                        options=[],
+                                        value=None,
+                                        placeholder="Select a graph to visualize...",
+                                        className="dropdown",
+                                        disabled=True,
+                                    )
+                                ],
                             ),
-                            html.Div(
-                                id="graph-load-status",
-                                className="graph-load-status",
+                            # Spinner while loading the selected graph (status + cache)
+                            dcc.Loading(
+                                id="graph-load-status-loading",
+                                type="circle",
+                                children=[
+                                    html.Div(
+                                        id="graph-load-status",
+                                        className="graph-load-status",
+                                    )
+                                ],
                             ),
                         ],
                     ),
@@ -42,6 +56,7 @@ def _top_bar() -> html.Div:
         ],
         className="top-bar-inner",
     )
+
 
 
 def _controls_panel() -> html.Div:
