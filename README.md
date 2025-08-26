@@ -5,6 +5,12 @@ It loads graphs serialized with Python’s pickle (NetworkX graphs),
 provides quick browsing of graph collections, and offers responsive 
 visualization with cached computations for better performance.
 
+## Live version
+
+The visualizer is currently available at: https://graph.playground.radlab.dev/
+
+Feel free to browse the information and discover trends!
+
 ## Key Features
 
 - Load NetworkX graphs saved as pickle files from organized collections.
