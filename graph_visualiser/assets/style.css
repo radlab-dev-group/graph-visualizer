@@ -1,0 +1,153 @@
+/* Root and typography */
+.root-container {
+    margin: 10px;
+    font-family: Arial, sans-serif;
+}
+
+.title {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-family: Arial, sans-serif;
+}
+
+/* Top bar (collection/graph selectors) */
+.top-bar {
+    margin-bottom: 15px;
+    padding: 15px;
+    background-color: #ecf0f1;
+    border-radius: 8px;
+    border: 1px solid #bdc3c7;
+}
+
+.top-bar-inner {
+    width: 100%;
+}
+
+.top-bar-grid {
+    display: grid;
+    grid-template-columns: 20% 1fr;
+    column-gap: 12px;
+    align-items: start;
+    box-sizing: border-box;
+}
+
+.label-bold {
+    font-weight: bold;
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.dropdown {
+    width: 100%;
+}
+
+.graph-load-status {
+    font-size: 12px;
+    min-height: 20px;
+    margin-top: 6px;
+}
+
+/* Control panel */
+.control-panel {
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+}
+
+.inline-top {
+    display: inline-block;
+    margin-right: 15px;
+    vertical-align: top;
+}
+
+.inline-middle {
+    display: inline-block;
+    margin-right: 15px;
+    vertical-align: middle;
+}
+
+.layout-label {
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.layout-dropdown {
+    width: 150px;
+    font-size: 12px;
+}
+
+.distance-label {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.distance-container {
+    display: inline-block;
+    width: 200px;
+    margin-right: 15px;
+    vertical-align: top;
+}
+
+.node-size-label {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.node-size-container {
+    display: inline-block;
+    width: 150px;
+    margin-right: 15px;
+    vertical-align: top;
+}
+
+.checklist {
+    font-size: 12px;
+}
+
+.buttons-container {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.btn {
+    font-size: 11px;
+    padding: 5px 10px;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: #3498db;
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+}
+
+.btn-success {
+    background-color: #27ae60;
+}
+
+/* Graph and stats */
+.graph-style {
+    height: 800px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+}
+
+.stats-container {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    font-size: 12px;
+    border: 1px solid #dee2e6;
+}

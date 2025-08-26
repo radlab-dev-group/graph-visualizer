@@ -1,0 +1,6 @@
+dash
+dash-cytoscape
+pandas
+plotly
+networkx
+asgiref
