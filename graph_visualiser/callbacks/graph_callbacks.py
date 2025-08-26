@@ -627,7 +627,7 @@ def register_callbacks(app) -> None:
             return [], None, True, None
 
         collection_path = os.path.join(GRAPH_DATA_PATH, selected_collection)
-        graph_files = find_graph_files(collection_path, GRAPH_FILE_PATTERN)
+        graph_files = find_graph_files(str(collection_path), GRAPH_FILE_PATTERN)
 
         if not graph_files:
             return (
@@ -641,13 +641,9 @@ def register_callbacks(app) -> None:
         # Best-effort: append approximate file size without loading the graph
         for i, p in enumerate(graph_files):
             label = os.path.basename(p)
-            try:
-                size_mb = os.path.getsize(p) / (1024 * 1024)
-                size_info = f"~{size_mb:.1f}MB"
-                label = f"{label} ({size_info})"
-            except Exception:
-                pass
             options.append({"label": label, "value": i})
+        # Sort by label
+        options.sort(key=lambda o: o["label"])
 
         return options, None, False, graph_files
 
