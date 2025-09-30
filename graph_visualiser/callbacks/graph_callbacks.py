@@ -5,17 +5,14 @@ import datetime
 from collections import deque
 from typing import Dict, Any, List, Tuple, Optional
 
+import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
-from dash import (
-    Output,
-    Input,
-    State,
-    ctx,
-    dash,
-)
-from dash.exceptions import PreventUpdate
+
 from flask import current_app
+from dash.exceptions import PreventUpdate
+from plotly.colors import sample_colorscale
+from dash import Output, Input, State, ctx, html
 
 # Optional Markdown (fallback to plain text if the package is unavailable)
 try:
@@ -35,6 +32,7 @@ from data_loader.loader import (
     get_graph_collections,
     find_graph_files,
     load_graph_from_path,
+    load_graph_path,
 )
 
 # --------------------------------------------
@@ -780,102 +778,130 @@ def register_callbacks(app) -> None:
             )
 
     # NEW: Update Cytoscape graph
+    # ile przedziałów (binów) chcesz pokazać w legendzie?
+    COLOR_BINS = 5
+    COLOR_SCALE = (
+        "Viridis"  # dowolny z plotly.colors.sequential, np. "Turbo", "Plasma"
+    )
+
     @app.callback(
         Output("cytoscape-graph", "elements"),
         Input("graph-store", "data"),
         Input("layout-dropdown", "value"),
         Input("exploration-state", "data"),
-        Input("node-size-slider", "value"),  # <-- now reacts to size slider
+        Input("node-size-slider", "value"),
         State("drag-mode-store", "data"),
         prevent_initial_call=True,
     )
     def update_cytoscape_graph(
         graph_data, layout_method, exploration_state, node_size_range, mode_data
     ):
-        """
-        Generates Cytoscape elements from the current graph.
-        """
+        """Generuje elementy Cytoscape – kolor i rozmiar wyliczane z wagi w `node["data"]["weight"]`."""
         if mode_data.get("mode") != "cytoscape" or not graph_data:
             raise PreventUpdate
 
+        # ---------- wczytanie grafu ----------
         graph_path = graph_data.get("path")
         if not graph_path:
             raise PreventUpdate
 
-        graph = load_graph_from_path(graph_path, current_app.graph_cache)
+        graph = load_graph_path(graph_path, current_app.graph_cache)
         if graph is None:
             return []
 
-        # Get or compute layout
+        # ---------- layout ----------
         pos = getattr(current_app, "node_positions", {}) or {}
         if not pos:
             pos = compute_layout_optimized(graph, layout_method)
 
+        # ---------- pomocnicze dane ----------
         center_node = exploration_state.get("center_node")
         distance_info = exploration_state.get("distance_info", {})
 
-        # Determine weight bounds for scaling
-        all_weights = [graph.nodes[n].get("weight", 10) for n in graph.nodes()]
-        min_weight, max_weight = min(all_weights), max(all_weights)
+        # wszystkie wagi – pobierane z node_data["weight"]
+        all_weights = [
+            graph.nodes[n].get("data", {}).get("weight", 10) for n in graph.nodes()
+        ]
+        min_w, max_w = min(all_weights), max(all_weights)
 
-        # Build Cytoscape elements
+        # podział na przedziały – potrzebny do legendy
+        bin_edges = np.linspace(min_w, max_w, COLOR_BINS + 1)
+
+        # budujemy mapę kolor‑>etykieta (ta sama dla całego grafu)
+        legend_map = {}
+        for i in range(COLOR_BINS):
+            # środek przedziału
+            low, high = bin_edges[i], bin_edges[i + 1]
+            mid = (low + high) / 2
+            norm_mid = (mid - min_w) / (max_w - min_w) if max_w != min_w else 0.5
+            col = sample_colorscale(COLOR_SCALE, [norm_mid])[0]  # np. "rgb(68,1,84)"
+            label = f"{low:.1f} – {high:.1f}"
+            legend_map[col] = label
+
+        # zapamiętujemy mapę legendy (przydatne w drugim callbacku)
+        current_app._cyto_legend_map = legend_map
+
         elements = []
 
-        # Nodes
         for node in graph.nodes():
             if node not in pos:
                 continue
-            x, y = pos[node]
-            node_data_dict = graph.nodes[node].get("data", {})
-            label = node_data_dict.get("label", str(node))
-            weight = graph.nodes[node].get("weight", 10)
 
-            # Scale size according to slider range (same logic as Plotly)
-            if min_weight == max_weight:
+            x, y = pos[node]
+            node_data = graph.nodes[node].get("data", {})
+            label = node_data.get("label", str(node))
+            weight = node_data.get("weight", 10)
+
+            # ---------- rozmiar (tak jak w Plotly) ----------
+            if min_w == max_w:
                 size = node_size_range[0]
             else:
-                normalized = (weight - min_weight) / (max_weight - min_weight)
+                norm = (weight - min_w) / (max_w - min_w)
                 size_range = node_size_range[1] - node_size_range[0]
-                size = node_size_range[0] + size_range * normalized
+                size = node_size_range[0] + size_range * norm
 
-            # Adjust size for selected / distance nodes (mirroring Plotly logic)
+            # ---------- scaling wybranego węzła ----------
             size_selected = size
             if node == center_node:
                 size_selected = size * 1.5
             elif distance_info and node in distance_info:
                 size_selected = size * 1.2
 
+            # ---------- kolor z wagi ----------
+            norm_weight = (
+                0.5 if max_w == min_w else (weight - min_w) / (max_w - min_w)
+            )
+            color = sample_colorscale(COLOR_SCALE, [norm_weight])[0]
+
+            # ---------- klasy CSS ----------
             classes = []
             if node == center_node:
                 classes.append("selected")
             elif distance_info and node in distance_info:
                 classes.append("distance")
 
+            # ---------- element węzła ----------
             elements.append(
                 {
                     "data": {
                         "id": str(node),
-                        "label": label,  # [:20],  # truncate long labels
+                        "label": label,
                         "size": size,
                         "size_selected": size_selected,
+                        "color": color,  # Cytoscape użyje tego w stylesheet
+                        "color_label": legend_map[
+                            color
+                        ],  # etykieta, przydatna w legendzie (opcjonalnie)
                     },
-                    "position": {"x": x * 500, "y": y * 500},  # scale for visibility
+                    "position": {"x": x * 500, "y": y * 500},
                     "classes": " ".join(classes),
                 }
             )
 
-        # Edges (limit for performance)
-        edges_to_draw = list(graph.edges())[:2000]
-        for u, v in edges_to_draw:
+        # ---------- krawędzie ----------
+        for u, v in list(graph.edges())[:2000]:
             if u in pos and v in pos:
-                elements.append(
-                    {
-                        "data": {
-                            "source": str(u),
-                            "target": str(v),
-                        }
-                    }
-                )
+                elements.append({"data": {"source": str(u), "target": str(v)}})
 
         return elements
 
@@ -1180,3 +1206,33 @@ def register_callbacks(app) -> None:
             content=json.dumps(export_data, indent=2),
             filename=f"distance_exploration_{center_node}_{int(time.time())}.json",
         )
+
+    @app.callback(
+        Output("cytoscape-legend", "children"),
+        Input("cytoscape-graph", "elements"),
+        prevent_initial_call=True,
+    )
+    def build_cytoscape_legend(_):
+        """Tworzy legendę po prawej stronie – używa mapy zapamiętanej w update_cytoscape_graph."""
+        legend_map = getattr(current_app, "_cyto_legend_map", {})
+        if not legend_map:
+            return ""
+
+        # sortujemy po dolnej granicy przedziału (wartość rosnąca)
+        sorted_items = sorted(legend_map.items(), key=lambda kv: kv[1])
+
+        legend_children = []
+        for color, label in sorted_items:
+            legend_children.append(
+                html.Div(
+                    className="cyto-legend-item",
+                    children=[
+                        html.Div(
+                            style={"backgroundColor": color},
+                            className="cyto-legend-swatch",
+                        ),
+                        html.Span(label),
+                    ],
+                )
+            )
+        return html.Div(legend_children, className="cytoscape-legend-container")
