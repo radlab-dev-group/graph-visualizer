@@ -12,6 +12,7 @@ from dash import (
     Input,
     State,
     ctx,
+    dash,
 )
 from dash.exceptions import PreventUpdate
 from flask import current_app
@@ -58,6 +59,39 @@ def _layout_cache_key(graph: nx.Graph, layout_method: str) -> str:
     return f"{id(graph)}_{layout_method}_{len(list(graph.nodes()))}"
 
 
+def _update_node_position_from_drag(point: dict) -> bool:
+    """
+    Zapisuje nową pozycję węzła, jeśli punkt zawiera:
+    - customdata – id węzła (lub lista z id)
+    - x, y       – współrzędne w przestrzeni wykresu
+
+    Zwraca True, gdy pozycja została zmieniona, w przeciwnym razie False.
+    """
+    if not isinstance(point, dict):
+        return False
+    if "customdata" not in point or "x" not in point or "y" not in point:
+        return False
+
+    node_id = point["customdata"]
+    if isinstance(node_id, list) and node_id:
+        node_id = node_id[0]
+
+    try:
+        x_new = float(point["x"])
+        y_new = float(point["y"])
+    except (TypeError, ValueError):
+        return False
+
+    if not isinstance(getattr(current_app, "node_positions", {}), dict):
+        current_app.node_positions = {}
+
+    if current_app.node_positions.get(node_id) == (x_new, y_new):
+        return False
+
+    current_app.node_positions[node_id] = (x_new, y_new)
+    return True
+
+
 # --------------------------------------------
 # Layout computation and trace builders
 # --------------------------------------------
@@ -76,7 +110,15 @@ def compute_layout_optimized(
     cache_key = _layout_cache_key(graph, layout_method)
 
     if not force_recompute and cache_key in layout_cache:
-        return layout_cache[cache_key]
+        # Keep user-dragged positions if present
+        cached_pos = layout_cache[cache_key]
+        if (
+            isinstance(getattr(current_app, "node_positions", {}), dict)
+            and current_app.node_positions
+        ):
+            cached_pos = cached_pos.copy()
+            cached_pos.update(current_app.node_positions)
+        return cached_pos
 
     # Parameter presets tuned for performance on large graphs
     if len(list(graph.nodes())) > 1000:
@@ -420,6 +462,11 @@ def prepare_interactive_traces(
     pos = getattr(current_app, "node_positions", {}) or {}
     if not pos:
         pos = compute_layout_optimized(graph, layout_method)
+    else:
+        # Sync layout cache with current positions, but do not trigger extra updates
+        cache_key = _layout_cache_key(graph, layout_method)
+        layout_cache = get_app_cache_dict("layout_cache")
+        layout_cache[cache_key] = pos
 
     traces: List[go.Scatter] = []
     traces.extend(prepare_edge_traces(graph, pos, selected_nodes, distance_info))
@@ -704,7 +751,184 @@ def register_callbacks(app) -> None:
                 None,
             )
 
-    # 4) Render the graph and handle exploration interactions
+    @app.callback(
+        Output("drag-mode-store", "data"),
+        Output("network-graph", "style"),
+        Output("cytoscape-graph", "style"),
+        Input("toggle-drag-btn", "n_clicks"),
+        State("drag-mode-store", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_drag_mode(n_clicks, mode_data):
+        """
+        Toggles between Plotly (no drag) and Cytoscape (with drag).
+        """
+        current_mode = mode_data.get("mode", "plotly")
+        new_mode = "cytoscape" if current_mode == "plotly" else "plotly"
+
+        if new_mode == "cytoscape":
+            return (
+                {"mode": "cytoscape"},
+                {"display": "none"},
+                {"width": "100%", "height": "800px", "display": "block"},
+            )
+        else:
+            return (
+                {"mode": "plotly"},
+                {"display": "block"},
+                {"display": "none"},
+            )
+
+    # NEW: Update Cytoscape graph
+    @app.callback(
+        Output("cytoscape-graph", "elements"),
+        Input("graph-store", "data"),
+        Input("layout-dropdown", "value"),
+        Input("exploration-state", "data"),
+        State("drag-mode-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_cytoscape_graph(
+        graph_data, layout_method, exploration_state, mode_data
+    ):
+        """
+        Generates Cytoscape elements from the current graph.
+        """
+        if mode_data.get("mode") != "cytoscape" or not graph_data:
+            raise PreventUpdate
+
+        graph_path = graph_data.get("path")
+        if not graph_path:
+            raise PreventUpdate
+
+        graph = load_graph_from_path(graph_path, current_app.graph_cache)
+        if graph is None:
+            return []
+
+        # Get or compute layout
+        pos = getattr(current_app, "node_positions", {}) or {}
+        if not pos:
+            pos = compute_layout_optimized(graph, layout_method)
+
+        center_node = exploration_state.get("center_node")
+        distance_info = exploration_state.get("distance_info", {})
+
+        # Build Cytoscape elements
+        elements = []
+
+        # Nodes
+        for node in graph.nodes():
+            if node not in pos:
+                continue
+            x, y = pos[node]
+            node_data_dict = graph.nodes[node].get("data", {})
+            label = node_data_dict.get("label", str(node))
+            weight = graph.nodes[node].get("weight", 10)
+
+            classes = []
+            if node == center_node:
+                classes.append("selected")
+            elif distance_info and node in distance_info:
+                classes.append("distance")
+
+            elements.append(
+                {
+                    "data": {
+                        "id": str(node),
+                        "label": label[:20],  # truncate long labels
+                        "size": min(weight * 2, 50),
+                        "size_selected": min(weight * 3, 75),
+                    },
+                    "position": {"x": x * 500, "y": y * 500},  # scale for visibility
+                    "classes": " ".join(classes),
+                }
+            )
+
+        # Edges (limit for performance)
+        edges_to_draw = list(graph.edges())[:2000]
+        for u, v in edges_to_draw:
+            if u in pos and v in pos:
+                elements.append(
+                    {
+                        "data": {
+                            "source": str(u),
+                            "target": str(v),
+                        }
+                    }
+                )
+
+        return elements
+
+    # NEW: Handle Cytoscape node clicks
+    @app.callback(
+        Output("exploration-state", "data", allow_duplicate=True),
+        Input("cytoscape-graph", "tapNodeData"),
+        Input("distance-slider", "value"),
+        State("exploration-state", "data"),
+        State("graph-store", "data"),
+        prevent_initial_call=True,
+    )
+    def handle_cytoscape_click(
+        tap_node_data, max_distance, exploration_state, graph_data
+    ):
+        """
+        Handles node clicks in Cytoscape mode.
+        """
+        if not tap_node_data or not graph_data:
+            raise PreventUpdate
+
+        graph_path = graph_data.get("path")
+        graph = load_graph_from_path(graph_path, current_app.graph_cache)
+        if graph is None:
+            raise PreventUpdate
+
+        clicked_node = tap_node_data.get("id")
+        center_node = exploration_state.get("center_node")
+
+        if clicked_node == center_node:
+            # Toggle off
+            return {
+                "center_node": None,
+                "distance_info": {},
+                "max_distance": max_distance,
+            }
+        else:
+            # Select new center
+            distance_info = get_nodes_within_distance(
+                graph, clicked_node, max_distance
+            )
+            return {
+                "center_node": clicked_node,
+                "distance_info": distance_info,
+                "max_distance": max_distance,
+            }
+
+    # NEW: Save dragged positions from Cytoscape
+    @app.callback(
+        Output("cytoscape-graph", "elements", allow_duplicate=True),
+        Input("cytoscape-graph", "elements"),
+        prevent_initial_call=True,
+    )
+    def save_cytoscape_positions(elements):
+        """
+        Persists node positions after dragging in Cytoscape.
+        """
+        if not elements:
+            raise PreventUpdate
+
+        if not isinstance(getattr(current_app, "node_positions", {}), dict):
+            current_app.node_positions = {}
+
+        for el in elements:
+            if "position" in el and "data" in el:
+                node_id = el["data"].get("id")
+                x = el["position"]["x"] / 500  # unscale
+                y = el["position"]["y"] / 500
+                current_app.node_positions[node_id] = (x, y)
+
+        raise PreventUpdate
+
+    # 4) Render the graph and handle exploration interactions (REMOVE drag_mode parameter)
     @app.callback(
         Output("network-graph", "figure"),
         Output("exploration-state", "data"),
@@ -730,6 +954,9 @@ def register_callbacks(app) -> None:
         click_data,
         exploration_state,
     ):
+        """
+        Main graph update handler for Plotly view.
+        """
         if not graph_data:
             fig = go.Figure()
             fig.update_layout(
@@ -771,12 +998,10 @@ def register_callbacks(app) -> None:
             center_node = None
             distance_info = {}
         elif triggered_id == "reset-btn":
-            # Reset layout and exploration state
             cache_key = _layout_cache_key(graph, layout_method)
             layout_cache = get_app_cache_dict("layout_cache")
             if cache_key in layout_cache:
                 del layout_cache[cache_key]
-            current_app.node_positions = {}
             current_app.distance_cache = {}
             center_node = None
             distance_info = {}
@@ -788,10 +1013,14 @@ def register_callbacks(app) -> None:
                     if isinstance(clicked_node, list) and clicked_node:
                         clicked_node = clicked_node[0]
                     if clicked_node in graph.nodes():
-                        center_node = clicked_node
-                        distance_info = get_nodes_within_distance(
-                            graph, clicked_node, max_distance
-                        )
+                        if clicked_node == center_node:
+                            center_node = None
+                            distance_info = {}
+                        else:
+                            center_node = clicked_node
+                            distance_info = get_nodes_within_distance(
+                                graph, clicked_node, max_distance
+                            )
         elif triggered_id == "distance-slider" and center_node:
             distance_info = get_nodes_within_distance(
                 graph, center_node, max_distance
@@ -802,7 +1031,6 @@ def register_callbacks(app) -> None:
             layout_cache = get_app_cache_dict("layout_cache")
             if cache_key in layout_cache:
                 del layout_cache[cache_key]
-            current_app.node_positions = {}
 
         selected_nodes = [center_node] if center_node else []
 
@@ -821,51 +1049,45 @@ def register_callbacks(app) -> None:
             "distance_info": distance_info,
             "max_distance": max_distance,
         }
-
         return fig, new_exploration_state
 
-    # 5) Stats panel
-    @app.callback(
-        Output("graph-stats", "children"),
-        Input("exploration-state", "data"),
-        Input("graph-store", "data"),
+    # Clientside callback for handling node drag
+    app.clientside_callback(
+        """
+        function(selectedData) {
+            if (!selectedData || !selectedData.points || selectedData.points.length === 0) {
+                return window.dash_clientside.no_update;
+            }
+            const point = selectedData.points[0];
+            if (!point.customdata || point.x === undefined || point.y === undefined) {
+                return window.dash_clientside.no_update;
+            }
+            const nodeId = Array.isArray(point.customdata) ? point.customdata[0] : point.customdata;
+            return {node: nodeId, x: point.x, y: point.y};
+        }
+        """,
+        Output("dragged-node-store", "data"),
+        Input("network-graph", "selectedData"),
+        prevent_initial_call=True,
     )
-    def update_stats(exploration_state, graph_data):
-        if not graph_data:
-            return "No graph loaded"
 
-        graph_path = graph_data.get("path")
-        graph = load_graph_from_path(graph_path, current_app.graph_cache)
-        if graph is None:
-            return "Graph unavailable"
-
-        num_nodes = len(graph.nodes())
-        num_edges = len(graph.edges())
-        density = nx.density(graph)
-
-        stats_parts = [
-            f"📊 Total nodes: {num_nodes:,}",
-            f"Total edges: {num_edges:,}",
-            f"Density: {density:.4f}",
-        ]
-
-        center_node = exploration_state.get("center_node")
-        distance_info = exploration_state.get("distance_info", {})
-
-        if center_node and distance_info:
-            explored_nodes = len(distance_info)
-            coverage = (explored_nodes / num_nodes) * 100 if num_nodes else 0
-            stats_parts.append(f"Explored: {explored_nodes} nodes ({coverage:.1f}%)")
-
-            explored_subgraph = graph.subgraph(distance_info.keys())
-            sub_edges = len(explored_subgraph.edges())
-            if sub_edges > 0:
-                sub_density = nx.density(explored_subgraph)
-                stats_parts.append(
-                    f"Subgraph edges: {sub_edges}, density: {sub_density:.4f}"
-                )
-
-        return " | ".join(stats_parts)
+    # # 5) Stats panel
+    # @app.callback(
+    #     Output("network-graph", "relayoutData"),
+    #     Input("network-graph", "selectedData"),
+    #     prevent_initial_call=True,
+    # )
+    # def store_dragged_positions(selected_data):
+    #     if not isinstance(selected_data, dict):
+    #         raise PreventUpdate
+    #     updated = False
+    #     for pt in selected_data.get("points", []):
+    #         if _update_node_position_from_drag(pt):
+    #             updated = True
+    #     # Zwracamy `dash.no_update`, aby nie modyfikować wykresu.
+    #     if not updated:
+    #         raise PreventUpdate
+    #     return dash.no_update
 
     # 6) Export exploration data
     @app.callback(
