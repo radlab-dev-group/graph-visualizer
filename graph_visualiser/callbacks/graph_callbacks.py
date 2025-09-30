@@ -785,11 +785,12 @@ def register_callbacks(app) -> None:
         Input("graph-store", "data"),
         Input("layout-dropdown", "value"),
         Input("exploration-state", "data"),
+        Input("node-size-slider", "value"),  # <-- now reacts to size slider
         State("drag-mode-store", "data"),
         prevent_initial_call=True,
     )
     def update_cytoscape_graph(
-        graph_data, layout_method, exploration_state, mode_data
+        graph_data, layout_method, exploration_state, node_size_range, mode_data
     ):
         """
         Generates Cytoscape elements from the current graph.
@@ -813,6 +814,10 @@ def register_callbacks(app) -> None:
         center_node = exploration_state.get("center_node")
         distance_info = exploration_state.get("distance_info", {})
 
+        # Determine weight bounds for scaling
+        all_weights = [graph.nodes[n].get("weight", 10) for n in graph.nodes()]
+        min_weight, max_weight = min(all_weights), max(all_weights)
+
         # Build Cytoscape elements
         elements = []
 
@@ -825,6 +830,21 @@ def register_callbacks(app) -> None:
             label = node_data_dict.get("label", str(node))
             weight = graph.nodes[node].get("weight", 10)
 
+            # Scale size according to slider range (same logic as Plotly)
+            if min_weight == max_weight:
+                size = node_size_range[0]
+            else:
+                normalized = (weight - min_weight) / (max_weight - min_weight)
+                size_range = node_size_range[1] - node_size_range[0]
+                size = node_size_range[0] + size_range * normalized
+
+            # Adjust size for selected / distance nodes (mirroring Plotly logic)
+            size_selected = size
+            if node == center_node:
+                size_selected = size * 1.5
+            elif distance_info and node in distance_info:
+                size_selected = size * 1.2
+
             classes = []
             if node == center_node:
                 classes.append("selected")
@@ -835,9 +855,9 @@ def register_callbacks(app) -> None:
                 {
                     "data": {
                         "id": str(node),
-                        "label": label[:20],  # truncate long labels
-                        "size": min(weight * 2, 50),
-                        "size_selected": min(weight * 3, 75),
+                        "label": label,  # [:20],  # truncate long labels
+                        "size": size,
+                        "size_selected": size_selected,
                     },
                     "position": {"x": x * 500, "y": y * 500},  # scale for visibility
                     "classes": " ".join(classes),
