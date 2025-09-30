@@ -1,3 +1,4 @@
+# ui/layout.py
 from dash import dcc, html
 import dash_cytoscape as cyto
 
@@ -60,7 +61,7 @@ def _top_bar() -> html.Div:
 
 
 def _controls_panel() -> html.Div:
-    """Control panel with layout, distance, node size, options, and action buttons."""
+    """Control panel with layout, distance, node size, options and action buttons."""
     return html.Div(
         [
             # Layout controls
@@ -70,7 +71,7 @@ def _controls_panel() -> html.Div:
                     dcc.Dropdown(
                         id="layout-dropdown",
                         options=[
-                            {"label": "Force-directed", "value": "spring"},
+                            {"label": "Force‑directed", "value": "spring"},
                             {"label": "Circular", "value": "circular"},
                             {"label": "Random", "value": "random"},
                             {"label": "Shell", "value": "shell"},
@@ -98,7 +99,7 @@ def _controls_panel() -> html.Div:
                 ],
                 className="distance-container",
             ),
-            # Node size controls
+            # Node‑size controls
             html.Div(
                 [
                     html.Label("Display Node Size:", className="node-size-label"),
@@ -114,7 +115,7 @@ def _controls_panel() -> html.Div:
                 ],
                 className="node-size-container",
             ),
-            # Options
+            # Options checklist
             html.Div(
                 [
                     dcc.Checklist(
@@ -130,7 +131,7 @@ def _controls_panel() -> html.Div:
                 ],
                 className="inline-middle",
             ),
-            # Buttons
+            # Action buttons
             html.Div(
                 [
                     html.Button(
@@ -155,8 +156,8 @@ def _controls_panel() -> html.Div:
 
 def _graph_with_loading() -> dcc.Loading:
     """
-    Graph area with a loading overlay and tuned mode-bar configuration.
-    Supports both Plotly and Cytoscape views.
+    Graph area with a loading overlay.
+    Supports both Plotly (dcc.Graph) and Cytoscape (dash_cytoscape.Cytoscape) views.
     """
     return dcc.Loading(
         id="loading",
@@ -165,6 +166,7 @@ def _graph_with_loading() -> dcc.Loading:
             html.Div(
                 id="graph-container",
                 children=[
+                    # --------------------- Plotly view ---------------------
                     dcc.Graph(
                         id="network-graph",
                         config={
@@ -187,54 +189,79 @@ def _graph_with_loading() -> dcc.Loading:
                             "scrollZoom": True,
                             "doubleClick": "reset+autosize",
                             "showTips": True,
-                            "watermark": False,
                             "responsive": True,
                         },
                         className="graph-style",
                         style={"display": "block"},
                     ),
+                    # --------------------- Cytoscape view ---------------------
                     cyto.Cytoscape(
                         id="cytoscape-graph",
                         layout={"name": "preset"},
                         style={
                             "width": "100%",
                             "height": "800px",
-                            "display": "none",
+                            "display": "none",  # ukryte, dopóki nie włączymy drag‑mode
                         },
+                        # ----------  STYLE SHEET – odzwierciedla wygląd Plotly ----------
                         stylesheet=[
+                            # ---- WSZYSTKIE węzły -------------------------------------------------
                             {
                                 "selector": "node",
                                 "style": {
                                     "content": "data(label)",
                                     "text-valign": "center",
                                     "text-halign": "center",
+                                    "font-size": "12px",
+                                    "color": "#000000",
                                     "background-color": "#0074D9",
-                                    "color": "#fff",
-                                    "font-size": "10px",
+                                    "border-color": "#0074D9",
+                                    "border-width": 1,
+                                    "opacity": 0.9,
                                     "width": "data(size)",
                                     "height": "data(size)",
                                 },
                             },
+                            # ---- Węzeł aktualnie przeciągany (pseudo‑klasa :grabbed) ----------
+                            {
+                                "selector": "node:grabbed",
+                                "style": {
+                                    "background-color": "#FF4136",
+                                    "border-color": "#FF4136",
+                                    "border-width": 2,
+                                    "width": "data(size_selected)",
+                                    "height": "data(size_selected)",
+                                },
+                            },
+                            # ---- Zaznaczony / wybrany węzeł (klasa .selected) -----------------
+                            {
+                                "selector": ".selected",
+                                "style": {
+                                    "background-color": "#FF4136",
+                                    "border-color": "#FF4136",
+                                    "border-width": 2,
+                                    "width": "data(size_selected)",
+                                    "height": "data(size_selected)",
+                                },
+                            },
+                            # ---- Węzły w promieniu wybranego węzła (klasa .distance) ---------
+                            {
+                                "selector": ".distance",
+                                "style": {
+                                    "background-color": "#FF851B",
+                                    "border-color": "#FF851B",
+                                    "border-width": 2,
+                                },
+                            },
+                            # ---- Krawędzie -------------------------------------------------------
                             {
                                 "selector": "edge",
                                 "style": {
                                     "width": 1,
                                     "line-color": "#ccc",
                                     "curve-style": "bezier",
+                                    "opacity": 0.6,
                                 },
-                            },
-                            {
-                                "selector": ".selected",
-                                "style": {
-                                    "background-color": "#FF4136",
-                                    "line-color": "#FF4136",
-                                    "width": "data(size_selected)",
-                                    "height": "data(size_selected)",
-                                },
-                            },
-                            {
-                                "selector": ".distance",
-                                "style": {"background-color": "#FF851B"},
                             },
                         ],
                     ),
@@ -245,14 +272,10 @@ def _graph_with_loading() -> dcc.Loading:
 
 
 def _aux_stores_and_outputs() -> html.Div:
-    """
-    Hidden stores and output containers.
-    """
+    """Hidden dcc.Store elements and extra output containers."""
     return html.Div(
         [
-            # Statistics
             html.Div(id="graph-stats", className="stats-container"),
-            # Hidden stores
             dcc.Download(id="download-graph-data"),
             dcc.Store(id="graph-store"),
             dcc.Store(
@@ -266,9 +289,7 @@ def _aux_stores_and_outputs() -> html.Div:
 
 
 def create_layout() -> html.Div:
-    """
-    Application layout with collection selection, controls, graph canvas, and stores.
-    """
+    """Kompletny layout aplikacji."""
     return html.Div(
         [
             html.H1("🔗 Network Explorer", className="title"),
