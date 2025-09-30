@@ -151,3 +151,17 @@
     font-size: 12px;
     border: 1px solid #dee2e6;
 }
+
+.cyto-legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.cyto-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #777;
+    margin-right: 6px;
+}

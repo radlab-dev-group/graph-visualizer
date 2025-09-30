@@ -121,3 +121,35 @@ def load_graph_from_path(path: str, cache: Dict[str, Any]) -> Optional[nx.Graph]
     except Exception as e:
         print(f"Unexpected error while loading graph from '{path}': {e}")
         return None
+
+
+def load_graph_path(
+    path: str,
+    cache: Optional[Dict[str, Any]] = None,
+) -> Optional[nx.Graph]:
+    """
+    Convenience wrapper around :func:`load_graph_from_path`.
+
+    The original callbacks (e.g. the Cytoscape‑related one) sometimes call
+    ``load_graph_path`` instead of ``load_graph_from_path``.  This helper
+    mirrors the old signature:
+
+    * ``path`` – absolute or relative path to a pickle file that stores a
+      ``networkx.Graph`` (or subclass).
+
+    * ``cache`` – optional explicit cache dictionary.  If omitted the function
+      falls back to the Flask‑application‑wide cache stored on
+      ``current_app.graph_cache`` (created by ``register_callbacks``).
+
+    The function simply forwards the call to ``load_graph_from_path`` and
+    returns the loaded ``nx.Graph`` (or ``None`` on failure).  Keeping the
+    wrapper separate makes the intent clear and avoids having to modify the
+    existing callback code.
+    """
+    # If the caller did not provide a cache, use the global Flask cache.
+    if cache is None:
+        # ``graph_cache`` is guaranteed to exist – it is initialised in
+        # ``graph_callbacks.register_callbacks``.
+        cache = getattr(current_app, "graph_cache", {})
+
+    return load_graph_from_path(path, cache)

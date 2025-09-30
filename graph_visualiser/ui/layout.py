@@ -156,114 +156,124 @@ def _controls_panel() -> html.Div:
 
 def _graph_with_loading() -> dcc.Loading:
     """
-    Graph area with a loading overlay.
-    Supports both Plotly (dcc.Graph) and Cytoscape (dash_cytoscape.Cytoscape) views.
+    Returns the loading‑wrapper that contains:
+      • the Plotly figure (id="network‑graph")
+      • the Cytoscape component (id="cytoscape‑graph")
+      • the legend (id="cytoscape‑legend") placed on the **right‑hand side**
+    The layout is a simple flex‑container so the legend stays next to the
+    graph exactly as it does in the native Plotly view.
     """
+    # ----------------------------------------------------------------------
+    #  Cytoscape stylesheet – exactly the same as the one you used before.
+    #  It is kept here so the function is self‑contained.
+    # ----------------------------------------------------------------------
+    cytoscape_stylesheet = [
+        # ------------------- nodes -------------------
+        {
+            "selector": "node",
+            "style": {
+                "content": "data(label)",
+                "text-valign": "center",
+                "text-halign": "center",
+                "font-size": "12px",
+                "color": "#000000",
+                # colour is taken from the element’s data (set in the callback)
+                "background-color": "data(color)",
+                "border-color": "data(color)",
+                "border-width": 1,
+                "opacity": 0.9,
+                "width": "data(size)",
+                "height": "data(size)",
+            },
+        },
+        # ------------------- grabbed node -------------------
+        {
+            "selector": "node:grabbed",
+            "style": {
+                "background-color": "#FF4136",
+                "border-color": "#FF4136",
+                "width": "data(size_selected)",
+                "height": "data(size_selected)",
+            },
+        },
+        # ------------------- selected node -------------------
+        {
+            "selector": ".selected",
+            "style": {
+                "background-color": "#FF4136",
+                "border-color": "darkred",
+                "border-width": 3,
+            },
+        },
+        # ------------------- distance‑highlighted nodes -------------------
+        {
+            "selector": ".distance",
+            "style": {"background-color": "#FF851B"},
+        },
+        # ------------------- edges -------------------
+        {
+            "selector": "edge",
+            "style": {
+                "width": 1,
+                "line-color": "#CCCCCC",
+                "opacity": 0.7,
+            },
+        },
+    ]
+
+    # ----------------------------------------------------------------------
+    #  Flex container that holds the graph (left) and the legend (right)
+    # ----------------------------------------------------------------------
     return dcc.Loading(
         id="loading",
         type="default",
         children=[
             html.Div(
-                id="graph-container",
+                # Flex‑box – legend will sit on the right side of the graph
+                style={"display": "flex", "alignItems": "flex-start"},
                 children=[
-                    # --------------------- Plotly view ---------------------
-                    dcc.Graph(
-                        id="network-graph",
-                        config={
-                            "displayModeBar": True,
-                            "displaylogo": False,
-                            "modeBarButtonsToRemove": [
-                                "lasso2d",
-                                "autoScale2d",
-                                "hoverClosestCartesian",
-                                "hoverCompareCartesian",
-                                "toggleSpikelines",
-                            ],
-                            "toImageButtonOptions": {
-                                "format": "png",
-                                "filename": "distance_network_graph",
-                                "height": 1200,
-                                "width": 1600,
-                                "scale": 2,
-                            },
-                            "scrollZoom": True,
-                            "doubleClick": "reset+autosize",
-                            "showTips": True,
-                            "responsive": True,
-                        },
-                        className="graph-style",
-                        style={"display": "block"},
-                    ),
-                    # --------------------- Cytoscape view ---------------------
-                    cyto.Cytoscape(
-                        id="cytoscape-graph",
-                        layout={"name": "preset"},
-                        style={
-                            "width": "100%",
-                            "height": "800px",
-                            "display": "none",  # ukryte, dopóki nie włączymy drag‑mode
-                        },
-                        # ----------  STYLE SHEET – odzwierciedla wygląd Plotly ----------
-                        stylesheet=[
-                            # ---- WSZYSTKIE węzły -------------------------------------------------
-                            {
-                                "selector": "node",
-                                "style": {
-                                    "content": "data(label)",
-                                    "text-valign": "center",
-                                    "text-halign": "center",
-                                    "font-size": "12px",
-                                    "color": "#000000",
-                                    "background-color": "#0074D9",
-                                    "border-color": "#0074D9",
-                                    "border-width": 1,
-                                    "opacity": 0.9,
-                                    "width": "data(size)",
-                                    "height": "data(size)",
+                    # ------------------------------------------------------------------
+                    #  LEFT PANEL – Plotly + Cytoscape (they occupy the same space,
+                    #  only one of them is visible at a time – the toggle‑drag
+                    #  callback switches the ``display`` style).
+                    # ------------------------------------------------------------------
+                    html.Div(
+                        id="graph-wrapper",
+                        # “flex:1” makes this column take all remaining width
+                        style={"flex": "1", "minWidth": "0"},
+                        children=[
+                            # Plotly figure (shown when we are in Plotly mode)
+                            dcc.Graph(
+                                id="network-graph",
+                                style={"width": "100%", "height": "800px"},
+                                config={"displayModeBar": False},
+                            ),
+                            # Cytoscape – initially hidden, will be shown when the user
+                            # clicks the “drag / explore” button.
+                            cyto.Cytoscape(
+                                id="cytoscape-graph",
+                                layout={"name": "preset"},
+                                style={
+                                    "width": "100%",
+                                    "height": "800px",
+                                    "display": "none",  # hidden until drag‑mode is on
                                 },
-                            },
-                            # ---- Węzeł aktualnie przeciągany (pseudo‑klasa :grabbed) ----------
-                            {
-                                "selector": "node:grabbed",
-                                "style": {
-                                    "background-color": "#FF4136",
-                                    "border-color": "#FF4136",
-                                    "border-width": 2,
-                                    "width": "data(size_selected)",
-                                    "height": "data(size_selected)",
-                                },
-                            },
-                            # ---- Zaznaczony / wybrany węzeł (klasa .selected) -----------------
-                            {
-                                "selector": ".selected",
-                                "style": {
-                                    "background-color": "#FF4136",
-                                    "border-color": "#FF4136",
-                                    "border-width": 2,
-                                    "width": "data(size_selected)",
-                                    "height": "data(size_selected)",
-                                },
-                            },
-                            # ---- Węzły w promieniu wybranego węzła (klasa .distance) ---------
-                            {
-                                "selector": ".distance",
-                                "style": {
-                                    "background-color": "#FF851B",
-                                    "border-color": "#FF851B",
-                                    "border-width": 2,
-                                },
-                            },
-                            # ---- Krawędzie -------------------------------------------------------
-                            {
-                                "selector": "edge",
-                                "style": {
-                                    "width": 1,
-                                    "line-color": "#ccc",
-                                    "curve-style": "bezier",
-                                    "opacity": 0.6,
-                                },
-                            },
+                                stylesheet=cytoscape_stylesheet,
+                            ),
                         ],
+                    ),
+                    # ------------------------------------------------------------------
+                    #  RIGHT PANEL – legend for Cytoscape mode
+                    # ------------------------------------------------------------------
+                    html.Div(
+                        id="cytoscape-legend",
+                        className="cytoscape-legend",
+                        # a little margin makes the legend look separated from the graph
+                        style={
+                            "marginLeft": "20px",
+                            "minWidth": "150px",
+                            "maxWidth": "250px",
+                        },
                     ),
                 ],
             )
