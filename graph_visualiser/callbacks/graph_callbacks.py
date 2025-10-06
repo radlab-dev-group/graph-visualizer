@@ -753,6 +753,7 @@ def register_callbacks(app) -> None:
         Output("drag-mode-store", "data"),
         Output("network-graph", "style"),
         Output("cytoscape-graph", "style"),
+        Output("cytoscape-legend", "style"),
         Input("toggle-drag-btn", "n_clicks"),
         State("drag-mode-store", "data"),
         prevent_initial_call=True,
@@ -760,20 +761,25 @@ def register_callbacks(app) -> None:
     def toggle_drag_mode(n_clicks, mode_data):
         """
         Toggles between Plotly (no drag) and Cytoscape (with drag).
+        Also hides the Cytoscape legend when in Plotly mode.
         """
         current_mode = mode_data.get("mode", "plotly")
         new_mode = "cytoscape" if current_mode == "plotly" else "plotly"
 
         if new_mode == "cytoscape":
+            # Show Cytoscape graph and its legend
             return (
                 {"mode": "cytoscape"},
                 {"display": "none"},
                 {"width": "100%", "height": "800px", "display": "block"},
+                {"display": "block"},
             )
         else:
+            # Hide Cytoscape graph and its legend, show Plotly graph
             return (
                 {"mode": "plotly"},
                 {"display": "block"},
+                {"display": "none"},
                 {"display": "none"},
             )
 
