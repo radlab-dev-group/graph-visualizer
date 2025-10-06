@@ -124,7 +124,7 @@ def _controls_panel() -> html.Div:
                             {"label": " Labels", "value": "labels"},
                             {"label": " Force refresh", "value": "refresh"},
                         ],
-                        value=["labels"],
+                        value=["labels", "refresh"],
                         className="checklist",
                         inline=True,
                     )
@@ -243,7 +243,7 @@ def _graph_with_loading() -> dcc.Loading:
                             dcc.Graph(
                                 id="network-graph",
                                 style={"width": "100%", "height": "800px"},
-                                config={"displayModeBar": False},
+                                config={"displayModeBar": False, "scrollZoom": True},
                             ),
                             # Cytoscape – initially hidden, will be shown when the user
                             # clicks the “drag / explore” button.
