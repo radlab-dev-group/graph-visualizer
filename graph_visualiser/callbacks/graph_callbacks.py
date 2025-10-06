@@ -992,6 +992,7 @@ def register_callbacks(app) -> None:
         Input("reset-btn", "n_clicks"),
         Input("clear-btn", "n_clicks"),
         Input("network-graph", "clickData"),
+        Input("drag-mode-store", "data"),
         State("exploration-state", "data"),
         prevent_initial_call=True,
     )
@@ -1004,6 +1005,7 @@ def register_callbacks(app) -> None:
         reset_clicks,
         clear_clicks,
         click_data,
+        drag_mode_data,
         exploration_state,
     ):
         """
