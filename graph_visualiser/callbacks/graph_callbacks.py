@@ -783,6 +783,137 @@ def register_callbacks(app) -> None:
                 {"display": "none"},
             )
 
+    @app.callback(
+        Output("cytoscape-graph", "stylesheet", allow_duplicate=True),
+        Output("cytoscape-graph", "boxSelectionEnabled", allow_duplicate=True),
+        Output("cytoscape-graph", "autounselectify", allow_duplicate=True),
+        Input("drag-mode-store", "data"),
+        prevent_initial_call=True,
+    )
+    def configure_cyto_interactions(mode_data):
+        """Włącza box selection i multi-select w trybie Cytoscape."""
+        if mode_data.get("mode") != "cytoscape":
+            raise PreventUpdate
+
+        stylesheet = [
+            {
+                "selector": "node",
+                "style": {
+                    "label": "data(label)",
+                    "background-color": "data(color)",
+                    "width": "mapData(size, 0, 200, 5, 120)",
+                    "height": "mapData(size, 0, 200, 5, 120)",
+                    "text-valign": "center",
+                    "text-halign": "center",
+                    "font-size": "10px",
+                    "color": "#111",
+                },
+            },
+            {
+                "selector": "node.selected",
+                "style": {
+                    "border-width": 3,
+                    "border-color": "darkred",
+                    "width": "mapData(size_selected, 0, 300, 10, 180)",
+                    "height": "mapData(size_selected, 0, 300, 10, 180)",
+                },
+            },
+            {
+                "selector": "node:selected",
+                "style": {
+                    "border-width": 3,
+                    "border-color": "#1f77b4",
+                    "overlay-color": "#1f77b4",
+                    "overlay-opacity": 0.08,
+                },
+            },
+            {"selector": "edge", "style": {"line-color": "#BBB", "width": 1}},
+        ]
+        return stylesheet, True, False
+
+    @app.callback(
+        Output("cytoscape-graph", "elements", allow_duplicate=True),
+        Output("cytoscape-graph", "selectedNodeData", allow_duplicate=True),
+        Input("cytoscape-graph", "selectedNodeData"),
+        Input("cytoscape-graph", "position"),
+        State("cytoscape-graph", "elements"),
+        prevent_initial_call=True,
+    )
+    def move_selected_nodes(selected_node_data, last_position_event, elements):
+        """
+        Gdy użytkownik przeciąga jeden z zaznaczonych węzłów, przesuwamy wszystkie zaznaczone
+        o ten sam wektor. Następnie zapisujemy nowe pozycje w current_app.node_positions.
+        """
+        # Brak danych – brak zmian
+        if not elements:
+            raise PreventUpdate
+
+        # selected_node_data to lista {id, ...} – trzymamy set id
+        selected_ids = set()
+        if isinstance(selected_node_data, list):
+            for nd in selected_node_data:
+                nid = nd.get("id")
+                if nid is not None:
+                    selected_ids.add(str(nid))
+
+        # Bez zaznaczenia – brak zmian
+        if not selected_ids:
+            raise PreventUpdate
+
+        # position event (dash-cytoscape) może nie być emitowany na każdym środowisku;
+        # jeśli brak – nie aktualizujemy względnie
+        if not isinstance(last_position_event, dict):
+            raise PreventUpdate
+
+        moved_id = last_position_event.get("id")
+        old_pos = last_position_event.get("oldPosition", {})
+        new_pos = last_position_event.get("position", {})
+
+        if not moved_id or moved_id not in selected_ids:
+            raise PreventUpdate
+
+        try:
+            dx = float(new_pos.get("x", 0)) - float(old_pos.get("x", 0))
+            dy = float(new_pos.get("y", 0)) - float(old_pos.get("y", 0))
+        except (TypeError, ValueError):
+            raise PreventUpdate
+
+        if dx == 0 and dy == 0:
+            raise PreventUpdate
+
+        # Przesuwamy każdy zaznaczony węzeł
+        id_to_el = {}
+        for el in elements:
+            if "data" in el and "id" in el["data"]:
+                id_to_el[str(el["data"]["id"])] = el
+
+        changed = False
+        for nid in selected_ids:
+            el = id_to_el.get(nid)
+            if not el or "position" not in el:
+                continue
+            el_pos = el["position"]
+            el_pos["x"] = el_pos.get("x", 0) + dx
+            el_pos["y"] = el_pos.get("y", 0) + dy
+            changed = True
+
+        if not changed:
+            raise PreventUpdate
+
+        # Zapis do current_app.node_positions (w skali nieprzeskalowanej)
+        if not isinstance(getattr(current_app, "node_positions", {}), dict):
+            current_app.node_positions = {}
+        for nid in selected_ids:
+            el = id_to_el.get(nid)
+            if not el or "position" not in el:
+                continue
+            current_app.node_positions[nid] = (
+                el["position"]["x"] / 500.0,
+                el["position"]["y"] / 500.0,
+            )
+
+        return elements, list({"id": nid} for nid in selected_ids)
+
     # NEW: Update Cytoscape graph
     # ile przedziałów (binów) chcesz pokazać w legendzie?
     COLOR_BINS = 5
