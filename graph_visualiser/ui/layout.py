@@ -139,12 +139,9 @@ def _controls_panel() -> html.Div:
                     ),
                     html.Button("Clear", id="clear-btn", className="btn btn-danger"),
                     html.Button(
-                        "Export", id="export-btn", className="btn btn-success"
-                    ),
-                    html.Button(
                         "🔀 Toggle Drag Mode",
                         id="toggle-drag-btn",
-                        className="btn btn-info",
+                        className="btn btn-success",
                     ),
                 ],
                 className="buttons-container",
